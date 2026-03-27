@@ -1,0 +1,195 @@
+import React, { useState, useEffect } from 'react';
+import { useLanguage } from '../context/LanguageContext';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, query, where, getDocs, updateDoc, doc, arrayUnion } from 'firebase/firestore';
+import { UserProfile } from '../types';
+import { motion, AnimatePresence } from 'motion/react';
+import { Users, Trophy, Flame, CheckCircle2, Copy, Plus, Search, X, UserPlus } from 'lucide-react';
+
+interface FriendChallengeProps {
+  profile: UserProfile | null;
+}
+
+const FriendChallenge: React.FC<FriendChallengeProps> = ({ profile }) => {
+  const { t, language, isRtl } = useLanguage();
+  const [friendCode, setFriendCode] = useState('');
+  const [friends, setFriends] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (profile?.friends && profile.friends.length > 0) {
+      fetchFriends();
+    }
+  }, [profile?.friends]);
+
+  const fetchFriends = async () => {
+    if (!profile?.friends) return;
+    try {
+      const q = query(collection(db, 'users'), where('shareCode', 'in', profile.friends));
+      const snap = await getDocs(q);
+      const friendData = snap.docs.map(doc => doc.data() as UserProfile);
+      setFriends(friendData);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'users');
+    }
+  };
+
+  const addFriend = async () => {
+    if (!friendCode || !profile) return;
+    if (friendCode === profile.shareCode) {
+      setError(isRtl ? 'لا يمكنك إضافة نفسك' : 'You cannot add yourself');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const q = query(collection(db, 'users'), where('shareCode', '==', friendCode));
+      const snap = await getDocs(q);
+      
+      if (snap.empty) {
+        setError(isRtl ? 'الكود غير صحيح' : 'Invalid code');
+      } else {
+        const userRef = doc(db, 'users', profile.uid);
+        await updateDoc(userRef, {
+          friends: arrayUnion(friendCode)
+        });
+        setFriendCode('');
+        fetchFriends();
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const copyCode = () => {
+    if (profile?.shareCode) {
+      navigator.clipboard.writeText(profile.shareCode);
+      // Show toast or feedback
+    }
+  };
+
+  return (
+    <div className="space-y-10">
+      <header className="flex items-center gap-4 mb-10">
+        <div className="w-12 h-12 bg-[#ff6b35] rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(255,107,53,0.2)]">
+          <Users size={24} />
+        </div>
+        <h1 className="text-4xl font-black tracking-tight">{t('challenge.title')}</h1>
+      </header>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+        {/* Share Section */}
+        <div className="space-y-8">
+          <div className="bg-gradient-to-br from-[#ff6b35] to-[#ff9f1c] p-10 rounded-[40px] shadow-2xl relative overflow-hidden">
+            <div className="relative z-10">
+              <h2 className="text-2xl font-black mb-6 tracking-tight">{t('challenge.shareCode')}</h2>
+              <div className="bg-white/20 backdrop-blur-md border border-white/30 rounded-2xl p-6 flex items-center justify-between group">
+                <span className="text-3xl font-black tracking-widest">{profile?.shareCode}</span>
+                <button 
+                  onClick={copyCode}
+                  className="p-3 bg-white text-[#ff6b35] rounded-xl hover:scale-110 transition-transform active:scale-95 shadow-lg"
+                >
+                  <Copy size={20} />
+                </button>
+              </div>
+              <p className="mt-6 text-white/80 text-sm font-medium leading-relaxed">
+                {isRtl ? 'شارك هذا الكود مع أصدقائك لتحديهم ومتابعة تقدمهم!' : 'Share this code with your friends to challenge them and track their progress!'}
+              </p>
+            </div>
+            <Users size={200} className="absolute -bottom-20 -right-20 opacity-10 rotate-12" />
+          </div>
+
+          <div className="bg-[#0a0a0a] border border-white/5 p-8 rounded-[40px] space-y-6">
+            <h2 className="text-xl font-bold flex items-center gap-3">
+              <UserPlus className="text-[#00d4ff]" />
+              {t('challenge.enterCode')}
+            </h2>
+            <div className="flex gap-3">
+              <input 
+                type="text" 
+                placeholder="GYM-XXXX"
+                value={friendCode}
+                onChange={(e) => setFriendCode(e.target.value.toUpperCase())}
+                className="flex-1 bg-white/5 border border-white/5 rounded-2xl px-6 py-4 font-bold focus:outline-none focus:border-[#ff6b35]/50 transition-all text-white"
+              />
+              <button 
+                onClick={addFriend}
+                disabled={loading}
+                className="bg-[#ff6b35] text-white p-4 rounded-2xl hover:bg-[#ff8c5a] transition-all active:scale-95 disabled:opacity-50"
+              >
+                <Plus size={24} />
+              </button>
+            </div>
+            {error && <p className="text-red-500 text-sm font-bold">{error}</p>}
+          </div>
+        </div>
+
+        {/* Friends Stats */}
+        <div className="lg:col-span-2 space-y-6">
+          <h2 className="text-2xl font-bold flex items-center gap-3">
+            <Trophy className="text-yellow-500" />
+            {t('challenge.friends')}
+          </h2>
+          
+          <div className="grid grid-cols-1 gap-4">
+            <AnimatePresence mode="popLayout">
+              {friends.map((friend, index) => (
+                <motion.div
+                  key={friend.uid}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="bg-[#0a0a0a] border border-white/5 p-8 rounded-[40px] flex flex-col sm:flex-row items-center gap-8 group hover:border-[#ff6b35]/30 transition-all"
+                >
+                  <div className="relative">
+                    <img 
+                      src={friend.photoURL || `https://ui-avatars.com/api/?name=${friend.displayName}`} 
+                      alt={friend.displayName || ''} 
+                      className="w-20 h-20 rounded-3xl border-2 border-white/10 group-hover:border-[#ff6b35]/50 transition-colors"
+                    />
+                    <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center text-black font-black text-xs shadow-lg">
+                      #{index + 1}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 text-center sm:text-left">
+                    <h3 className="text-2xl font-bold mb-4 group-hover:text-[#ff6b35] transition-colors">{friend.displayName}</h3>
+                    <div className="flex flex-wrap justify-center sm:justify-start gap-4">
+                      <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
+                        <Flame size={16} className="text-orange-500" />
+                        <span className="text-sm font-bold">{friend.currentStreak || 0} {t('common.days')}</span>
+                      </div>
+                      <div className="flex items-center gap-2 bg-white/5 px-4 py-2 rounded-xl border border-white/5">
+                        <CheckCircle2 size={16} className="text-green-500" />
+                        <span className="text-sm font-bold">{friend.completedSessions || 0} {t('common.completed')}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="w-full sm:w-auto">
+                    <div className="bg-[#ff6b35]/10 text-[#ff6b35] px-6 py-3 rounded-2xl font-black text-sm uppercase tracking-widest border border-[#ff6b35]/20">
+                      {friend.shareCode}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {friends.length === 0 && (
+              <div className="text-center py-32 bg-[#0a0a0a] border border-white/5 rounded-[40px] text-gray-500">
+                <Users size={64} className="mx-auto mb-6 opacity-20" />
+                <p className="text-xl font-medium">{isRtl ? 'لم تضف أي أصدقاء بعد' : 'No friends added yet'}</p>
+                <p className="text-sm mt-2">{isRtl ? 'أدخل كود صديقك للبدء!' : 'Enter a friend code to get started!'}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default FriendChallenge;

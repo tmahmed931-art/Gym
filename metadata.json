@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user statistics and sharing information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID from Firebase Auth." },
+        "displayName": { "type": "string", "description": "User's display name." },
+        "photoURL": { "type": "string", "description": "User's profile picture URL." },
+        "shareCode": { "type": "string", "description": "Unique code for friend challenges (e.g., GYM-XXXX)." },
+        "totalSessions": { "type": "integer", "description": "Total number of workout sessions." },
+        "completedSessions": { "type": "integer", "description": "Total number of completed workout sessions." },
+        "currentStreak": { "type": "integer", "description": "Current consecutive days of working out." },
+        "lastWorkoutDate": { "type": "string", "format": "date", "description": "The date of the last workout." }
+      },
+      "required": ["uid", "shareCode"]
+    },
+    "Workout": {
+      "title": "Workout Session",
+      "description": "Stores details of a planned or completed workout session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique workout ID." },
+        "uid": { "type": "string", "description": "User ID who owns this workout." },
+        "date": { "type": "string", "format": "date", "description": "The scheduled date of the workout." },
+        "workoutName": { "type": "string", "description": "Name of the workout (e.g., Push Day)." },
+        "exercises": { "type": "array", "items": { "type": "string" }, "description": "List of exercises in this session." },
+        "completed": { "type": "boolean", "description": "Whether the workout is completed." },
+        "dateCompleted": { "type": "string", "format": "date", "description": "The date when the workout was completed." }
+      },
+      "required": ["uid", "date", "workoutName"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles and stats."
+    },
+    "/workouts/{workoutId}": {
+      "schema": "Workout",
+      "description": "Individual workout sessions."
+    }
+  }
+}

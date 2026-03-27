@@ -1,0 +1,95 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {uid}
+    // Fields:
+    //   - uid: string (required) - User ID
+    //   - displayName: string (optional) - User's display name
+    //   - photoURL: string (optional) - Profile picture URL
+    //   - shareCode: string (required) - Unique code for friend challenges
+    //   - totalSessions: integer (optional) - Total sessions
+    //   - completedSessions: integer (optional) - Completed sessions
+    //   - currentStreak: integer (optional) - Current streak
+    //   - lastWorkoutDate: string (optional) - Last workout date
+    //
+    // Collection: workouts
+    // Document ID: {workoutId}
+    // Fields:
+    //   - id: string (optional) - Workout ID
+    //   - uid: string (required) - Owner UID
+    //   - date: string (required) - Scheduled date
+    //   - workoutName: string (required) - Name of workout
+    //   - exercises: list (optional) - List of exercises
+    //   - completed: bool (optional) - Completion status
+    //   - dateCompleted: string (optional) - Completion date
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "tmahmed931@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'shareCode']) &&
+             data.uid is string &&
+             data.shareCode is string &&
+             data.shareCode.size() >= 8 && data.shareCode.size() <= 12;
+    }
+
+    function isValidWorkout(data) {
+      return data.keys().hasAll(['uid', 'date', 'workoutName']) &&
+             data.uid is string &&
+             data.date is string &&
+             data.workoutName is string && data.workoutName.size() > 0 && data.workoutName.size() < 100;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{uid} {
+      // Users can read their own profile. Others can read if they have the shareCode (via query).
+      // For simplicity, we allow reading if authenticated, but we should be careful with PII.
+      // The request says "عرض إحصائيات الأصدقاء برمز كود", so we allow reading by shareCode.
+      allow read: if isAuthenticated();
+      allow create: if isOwner(uid) && isValidUser(request.resource.data);
+      allow update: if isOwner(uid) && isValidUser(request.resource.data) &&
+                    request.resource.data.uid == resource.data.uid;
+      allow delete: if isAdmin();
+    }
+
+    match /workouts/{workoutId} {
+      // Workouts are private to the owner.
+      allow read: if isAuthenticated() && (resource == null || resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidWorkout(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAuthenticated() && isValidWorkout(request.resource.data) &&
+                    resource.data.uid == request.auth.uid &&
+                    request.resource.data.uid == resource.data.uid;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
